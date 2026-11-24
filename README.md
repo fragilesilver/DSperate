@@ -1,263 +1,110 @@
-# DSperate (Nintendo DS Emulator)
+# DSperate for muOS (Andromeda and Supernova)
 
-AI DISCLAIMER: Agentic coding is used here. A lot. I am not smart enough to keep track
-of all of this with the wet electric meat lump that sits inside my skull.
+This fork packages [DSperate](https://github.com/beebono/DSperate), beebono's
+Nintendo DS and DSi emulator, as a one-file installer for
+[muOS](https://muos.dev) on the Anbernic RG35XX family (Allwinner H700).
 
-A Nintendo DS and DSi emulator that reimplements DraStic's JIT and NEON rendering
-techniques, with modern niceties from melonDS such as per-screen windows and
-local wireless.
-Built for and measured on ARM handhelds (the Anbernic RG DS, an RK3566 with
-four A55 cores); commercial games boot and play. Everything is verified against
-melonDS with frame dumps and instruction traces.
+The emulator is upstream's own code and its own prebuilt binaries. This fork
+adds only the muOS side: a launcher, a starting config and a core definition,
+so that DSperate shows up as a standalone emulator for the Nintendo DS system.
 
-DSperate is a **clean-room** reimplementation of DraStic's *techniques*,
-documented by studying its freely-distributable debug-symbol build (approved
-for distribution by its developer, Exophase) and measuring it on real
-hardware. No DraStic code is in this tree. See [docs/techniques](docs/techniques).
+Upstream's README, with the full feature list, is in
+[README.upstream.md](README.upstream.md).
 
-## Previews
+## Status
 
-<img src="dsperate-menu.png">
+| DSperate | muOS | Package | On device |
+|---|---|---|---|
+| v4.0.1 | 2606.0 Andromeda | `dsperate-v4.0.1-andromeda.muxzip` | ✔ passed (RG35XX Pro) |
+| v4.0.1 | 2612 Supernova | `dsperate-v4.0.1-supernova.muxzip` | ✔ passed (RG35XX Pro) |
 
-<img src="dsperate-pip.png" width=49.99999%><img src="dsperate-pip2.png" width=49.99999%>
+Both packages were tested on an RG35XX Pro (2026-11-24) and passed all of these
+checks:
+- a DS game boots;
+- an in-game save survives a reboot;
+- an existing save from an older version still loads;
+- saving and loading a state works;
+- a DSi game runs at an acceptable speed.
 
-## Features
+Other RG35XX models (Plus, H, SP, 2024) use the same H700 SoC and should behave
+the same, but only the Pro has been tested. Handhelds with other chips are not
+covered.
 
-### Core
+## Which package
 
-- **Both CPUs, interpreted or recompiled.** ARM946E-S and ARM7TDMI
-  interpreters on every host; an ARM → AArch64 recompiler and an ARM → ARMv7
-  recompiler ([src/core/cpu/jit/README.md](src/core/cpu/jit/README.md)),
-  verified instruction by instruction against the interpreter.
-- **melonDS-grade cycle timing** with per-page cost tables and TCM windows,
-  plus an idle-loop detector that proves a poll loop side-effect-free and skips
-  to the next event.
-- **Event-bound CPU interleave** as DraStic does it: each CPU runs to the
-  next scheduled event.
-- **Full system.** DMA with burst timing, timers, IPC, SPI (touchscreen,
-  firmware flash, power management, microphone), RTC, divider/sqrt, and Wi-Fi
-  with real frames (see *Local wireless and internet* below).
-- **Fastmem.** The recompilers reach guest RAM through host-mapped views on
-  AArch64 and ARMv7, DS and DSi alike.
-- **Retail cartridges.** KEY1/KEY2 protocol, direct boot, per-title save-chip
-  database (EEPROM and FLASH variants), and IR-cart pass-through for the
-  Pokémon titles that need it.
-- **Slot 2.** A GBA game for the DS games that read one (Pal Park, unlocks),
-  including a Boktai cartridge's solar sensor at a light level you set; the
-  Rumble Pak; and the Guitar Grip that Guitar Hero: On Tour and Band Hero need.
-- **Zipped ROMs.** `.zip` files holding an `.nds` load directly (detected by
-  magic, not extension), with an on-disk unpack cache. No zip64, 7z or rar.
-- **2D.** Both engines complete: every BG mode, sprites, windows, mosaic,
-  blending, extended palettes, display capture, display FIFO, master
-  brightness. Rendered lazily in one batch per frame from a write journal,
-  engine B on a worker thread, with NEON line kernels.
-- **3D.** Full geometry engine (timed command FIFO, matrix stacks, lighting,
-  clipping, tests) and a software rasteriser (textures, toon/highlight,
-  shadows, fog, edge marking, anti-aliasing) that matches melonDS pixel for
-  pixel. Runs asynchronously on three worker threads with a decoded-texture
-  cache and a skip for resubmitted frames.
-- **GPU 3D** (`video.gpu3d`, `--gpu3d`, the GPU 3D menu row, off by default):
-  the same polygon lists drawn by Vulkan instead (OpenGL ES 3.1 on a device
-  without Vulkan), at the DS's resolution, with the DS's depth, stencil, shadow
-  and translucency rules on the hardware pipeline, and the finished layer read
-  back for the 2D compositor. The frame may be one behind under load (never on
-  a frame the game captures). Colours and texture coordinates are interpolated
-  in float, so a texel step can land a pixel early or late against the
-  hardware. Compiled Vulkan pipelines are cached on disk, so later starts and
-  AA switches are quick. The software rasteriser stays the exact reference and
-  the fallback: what the GPU draws may differ from it within reason, never in
-  what is on screen. With the Vulkan raster and the Vulkan present,
-  `video.gpu3d_scale` (`--gpu3d-scale`, the GPU 3D SCALE menu row) draws the 3D
-  at up to two or four times the DS's resolution (no finer than the largest
-  view shows): the 2D layers stay at the DS's and
-  the present merges them with the finer 3D image, also where the game shows
-  a captured 3D frame again; the game itself reads a 1x copy.
-- **Sound.** All sixteen SPU channels (PCM8/16, ADPCM, PSG, noise) and capture
-  units, mixed at the console's real 32728.5 Hz. The frontend paces from its own
-  frame limiter at the console's rate, not from the audio queue, and keeps the
-  host's CPU governor and real-time throttling from stealing frames.
-- **No dumps required.** Without BIOS/firmware files, a built-in FreeBIOS and a
-  generated firmware run games by direct boot. Real dumps (`bios9.bin`,
-  `bios7.bin`, `firmware.bin`, never provided here) unlock the firmware menu and
-  exact timing.
+- **`-andromeda`**: muOS 2606.0 Andromeda (final release). Builds of Andromeda older
+  than October 2026 used a different core-list layout and are not supported.
+- **`-supernova`**: muOS 2612 Supernova.
 
-### Nintendo DSi (experimental)
+The two are not interchangeable. Each muOS release keeps its core definitions in
+a different place and format.
 
-- **DSiWare without a NAND.** A `.nds` or `.cia` DSiWare title runs with only the
-  BIOS dumps (all four: DS and DSi): DSperate synthesises the console, its
-  settings, the NAND and a system font of its own, and hands the title over the
-  way the DSi Menu would.
-- **A real NAND.** With `--dsi-mode` and your own `nand.bin`, the console boots
-  to the DSi Menu. The NAND is read-only; writes live in memory and persist
-  beside it. A named title is installed into the session, and installed titles
-  can be started directly through NAND title shortcuts.
-- **DSi hardware.** SD card slot backed by a host folder (synced back, deletions
-  included), microphone, DSi Wi-Fi, PictoChat, and Download Play from the Menu.
-  The cameras see a still: a picture from `paths.dsi_photos` picked under DS
-  OPTIONS in the menu, or colour bars. There is no live camera.
-- **Save states, the recompiler, idle skip and fastmem** all work in DSi sessions.
-- **DSi-enhanced game cards** run as the DS games they also are. With
-  `emu.dsi_enhanced` (DSI ENHANCED GAMES in the menu, best set per game) and the
-  DSi BIOS pair they run as a DSi, booted straight from the card. Experimental,
-  and heavier: the DSi's CPU is twice as fast.
-- **The DSP.** The three programs Nintendo's SDK gave games (AAC, G711,
-  graphics) run as melonDS's high-level rewrites, with AAC decoded by FAAD2. Any
-  other DSP program runs on teakra, exactly and far slower than real time on a
-  handheld (the frontend says so). The DSi Sound app starts and reaches its menu;
-  its two modes do not load yet.
+## Install
 
-### Local wireless and internet
+1. Download the package for your muOS release from
+   [Releases](https://github.com/fragilesilver/DSperate/releases).
+2. Copy the `.muxzip` to `ARCHIVE/` on SD1.
+3. On the device, open **Applications → Archive Manager** and install it.
+4. **Reboot.** muOS reads core definitions at boot.
+5. In the Nintendo DS ROM folder, set the core to **DSperate - Standalone**
+   (for one game, or for the whole folder).
 
-- **Local wireless over the LAN**, speaking melonDS's protocol so either end can
-  be melonDS: `--lan-host`, `--lan-join`, or `--netplay` to join whoever is on
-  the LAN or host otherwise. Multiplayer and Download Play work, across devices.
-- **Internet** through the emulated access point over a user-mode TCP/IP stack
-  (vendored libslirp; no privileges). Wiimmfi connects.
-- **NETWORK FEATURES** in the pause menu turns a session on or off mid-run. While
-  one is live, the speed knobs, fast forward, frameskip and save states are off,
-  so both consoles stay on the same clock.
+Reinstalling or updating never overwrites your settings. The config is created
+from the packaged defaults on the first launch only.
 
-### Playing
+## What it installs
 
-- **Save states.** Ten slots plus a hidden auto slot that can be written on
-  quit and resumed on the next launch. Exact round trip, includes the screen
-  layout and achievement progress, refuses to load across a different BIOS.
-  DSi states carry the NAND and SD card changes too.
-- **Battery saves** written shortly after the game stops writing and again on
-  pause, lid close and exit (SIGTERM included).
-- **Pause menu** drawn over the game and driven with the DS buttons: save/load,
-  slot list, cheats, options pages (emulation, visual effects, layout,
-  controls, DS settings), achievements, resume and quit.
-- **Action Replay cheats** from a `usrcheat.dat` database, matched by game
-  code and header checksum, toggled per game from the pause menu.
-- **Analog controls** for about 70 games through shocoman's Circle Pad
-  patches, built in: enable the game's `CPAD` code under Options > Analog and
-  the sticks steer (and, with two, the camera and ZL/ZR). A
-  `usrcheat-analog.dat` of your own extends the built-in set game by game. See
-  [docs/techniques/07](docs/techniques/07-3ds-circle-pad-cheats.md).
-- **RetroAchievements** (Casual mode only, no Hardcore) via rcheevos: sign in
-  with a username or a token the CFW already holds, unlock toasts, an
-  achievements list and account page in the pause menu, encore mode, and an
-  optional screenshot on unlock. DS games and DSiWare, however they are
-  started. Uses the system's libcurl at runtime.
-- **Firmware boot.** With no ROM the console boots its own DS menu with the
-  clock set from the host. Settings changed inside it are kept in a sidecar
-  file so the dump is never written to. A built-in loader cart in the slot
-  raises a game picker from `[paths] games`; the chosen game is direct-booted.
-- **Fast forward** (held or toggled, optionally capped) and **frameskip**
-  (adaptive or fixed) that skips only drawing, so the game runs as usual. By
-  default frames the game display-captures are skipped too, so a
-  capture-driven effect can lag a frame (`emu.frameskip_capture = false` for
-  exactness). Skipping runs in whole display periods for games that alternate
-  screens.
-- **Input recording and replay.** A played session becomes a deterministic,
-  reproducible benchmark; [scenes/](scenes/) holds the ones used in the docs.
-- **Microphone and lid.** Real ALSA capture (DC-blocked and noise-gated) or a
-  held-key fake mic; a real hinge switch, host suspend, or a hotkey drives the
-  lid.
-- **Controls.** Keyboard and controller remapping, controller hotkeys as
-  `mod+button` chords, a stick as the d-pad or face buttons, a stick-driven
-  stylus crosshair, per-axis analog remapping for pads whose sticks SDL reports
-  rotated or mirrored, and touch or mouse on the bottom screen. Pad buttons are
-  read by position (SDL's a/b/x/y as south/east/west/north), which the menu
-  shows as position pips; if a pip doesn't match the button pressed, the
-  controller's SDL mapping is wrong and should be fixed there
-  (`SDL_GAMECONTROLLERCONFIG`), not by rebinding.
-- **Config.** An INI in `~/.config/dsperate/` with every key commented, per-game
-  override files by ROM name or game code; [configs/default.ini](configs/default.ini)
-  is the full default file.
+| Package section | Lands at | Contents |
+|---|---|---|
+| `emulator/` | `/opt/muos/share/emulator/dsperate/` | `dsperate`, `dsperate-headless`, `dsperate.ini.default` |
+| `script/` | `/opt/muos/script/launch/ext-dsperate.sh` | launcher |
+| `info/` | `SD1/MUOS/info/manifest/` | DS core definition: `core.json` (Andromeda) or `core/Nintendo/Nintendo DS.json` (Supernova) |
 
-### Display
+## Files on the device
 
-- **Layouts:** vertical, horizontal, single, picture-in-picture, and two
-  "dominant" modes where one screen takes the largest whole scale and the other
-  fills what is left. Hotkeys cycle layouts and swap screens, remembered per game.
-- **Scaling filters** applied per scanline straight into the presented buffer:
-  nearest, bilinear, LCD grid, box-filter seams (sharp, shimmer-free), and
-  chunky cells; optional integer scaling (letterbox or crop).
-- **3D anti-aliasing** (`video.aa`, `--aa`, the ANTI-ALIASING menu row): the
-  hardware's own edge blend on the software rasteriser (pixel-exact with
-  melonDS), and 4x MSAA on the Vulkan GPU raster, which also smooths the
-  creases and cut-out edges the DS leaves stepped (the OpenGL ES raster has
-  none).
-- **Colour correction** (`video.colour`, `--colour`, the COLOUR menu row):
-  `nds` gives the picture the original DS's colours (hunterk and Pokefan531's
-  nds-color, as ROCKNIX's `lcd1x-nds-color` shader has it), `nds_lite` the
-  DS Lite's brighter ones (after the minui DSperate pak's `ds_lite` tone). It
-  works at DS resolution on every route to the panel: with the Vulkan present
-  on the present thread as the frames are uploaded (free for the emulation),
-  elsewhere in the core's output stage. Screenshots keep the game's own colours.
-- **Screen gap** (`video.screen_gap`, `--screen-gap`): a distance in panel
-  pixels between the two screens of a stacked, side-by-side or dominant pair,
-  or `auto`, which pushes them to the panel's edges when the fit leaves room.
-- **Fastest path to the panel, chosen automatically:** the display engine's
-  hardware scaler on Allwinner handhelds (Miyoo A30), fbdev on the H700 boards,
-  zero-copy dmabuf under Wayland with direct scanout where allowed, our own page
-  flips under KMSDRM, and SDL's renderer only where nothing else applies.
-- **Scaling off the CPU** (`video.gpu_present`, on by default where it works):
-  the DS-resolution frames are scaled and laid out into the scanout buffer by
-  a Vulkan render pass, which also draws the LCD grid and a fading PiP inset.
-  Where that does not work, the scanline
-  scaler does the job on the CPU.
-- **Dual-window mode** for dual-panel handhelds: one fullscreen window per
-  display, one DS screen each.
-- **On-screen overlays:** FPS counter, state slot number, screenshot notice,
-  achievement toasts.
+| What | Where |
+|---|---|
+| Config | `/opt/muos/share/emulator/dsperate/.config/dsperate/dsperate.ini` |
+| Battery saves | `MUOS/save/file/DSperate/` |
+| Save states | `MUOS/save/state/DSperate/` |
+| Screenshots | `MUOS/screenshot/` |
+| BIOS, firmware, cheats (optional) | `MUOS/bios/nds/` (`bios9.bin`, `bios7.bin`, `firmware.bin`, `usrcheat.dat`) |
+| Last run's log | `SD1/MUOS/log/dsperate.txt` |
 
-## Building
+The `MUOS/...` paths are on SD1. Games run without BIOS or firmware dumps.
+A set dumped from your own DS adds the firmware boot screen and cycle-exact BIOS
+timing. DSi mode needs dumps from your own DSi. None are included.
 
-Requires CMake ≥ 3.16, Ninja, a C++17 compiler, and SDL2 for the playable
-frontend. The vendored third-party code is miniz's DEFLATE decompressor,
-rcheevos, ENet, libslirp, teakra (MIT), melonDS's DSP programs, FAAD2 (GPL-2.0-or-later;
-code from FAAD2 is copyright (c) Nero AG, www.nero.com) and stb_image (public domain / MIT; decodes the
-DSi cameras' still).
+## Notes
 
-    cmake --preset host && cmake --build --preset host && ctest --preset host
+- **Video goes straight to the framebuffer** (`[video] sink = fbdev`). This skips
+  the SDL2 that muOS ships for its own frontend.
+- **Face buttons.** muOS's default *Retro* control scheme already lays the
+  buttons out Nintendo-style, so the starting config maps the face buttons
+  one-to-one. If you switch the content's control scheme to *Modern*, remove the
+  `[pad]` block from `dsperate.ini` to get DSperate's own defaults back.
+- **After a muOS update, install the package again.** The core definition on
+  SD1 replaces muOS's own (the DS system's on Supernova, the whole core list on
+  Andromeda). A stale copy can hide cores that a muOS update adds.
+- **DSi games** use DSperate's exact timing model by default. Setting
+  `[emu] timing` in `dsperate.ini` picks another model; DSperate then shows a
+  notice at launch.
+- **A battery save that can't be read stops the launch** (new in DSperate
+  4.0), so a damaged save isn't silently replaced. Check the log above.
 
-Cross builds: `aarch64-cross` (needs `aarch64-linux-gnu-g++`) and
-`arm32-cross` (needs `arm-linux-gnueabihf-g++`); tests run under
-`qemu-*-static` when present. The recompiler and NEON kernels build only on
-AArch64 and ARMv7 hosts; elsewhere you get the interpreter and the portable
-renderer.
+## Uninstall
 
-CMake switches: `DSPERATE_JIT`, `DSPERATE_NEON`, `DSPERATE_TESTS`,
-`DSPERATE_HEADLESS`, `DSPERATE_SDL`, `DSPERATE_WAYLAND`, `DSPERATE_CHEEVOS`,
-`DSPERATE_NET`, `DSPERATE_HARDEN`, `DSPERATE_TUNE` (extra `-mcpu`/`-mtune`
-flags, e.g. `-mcpu=cortex-a55`), and `DSPERATE_PGO=generate|use` (profiles for
-AArch64 and ARMv7 are committed under [pgo/](pgo/)).
+Delete `/opt/muos/share/emulator/dsperate/` and
+`/opt/muos/script/launch/ext-dsperate.sh`. Then delete the DS core definition
+this package added under `SD1/MUOS/info/manifest/` (on Andromeda, the whole
+`core.json` there) and reboot. Your saves in `MUOS/save/` are left alone.
 
-## Running
+## Credits and licence
 
-    dsperate [game.nds|game.zip|title.cia] [--bios9 F --bios7 F --firmware F] [options]
-    dsperate --dsi-mode --bios9i F --bios7i F [--dsi-nand nand.bin] [title] [options]
+DSperate is by beebono and contributors. This fork follows upstream
+releases and does not change the emulator itself. Report emulator bugs
+[upstream](https://github.com/beebono/DSperate/issues), and muOS packaging
+problems here. muOS is by the [MustardOS](https://github.com/MustardOS) team.
+This fork is not affiliated with either project.
 
-`dsperate --help` lists every option; each has a key in the settings file and
-the command line overrides it. Default keys: arrows and `X`/`Z`/`S`/`A`/`Q`/`W`
-for the face and shoulder buttons, Enter/Right Shift for Start/Select, `P`
-pause menu, `Tab` fast forward, `F5`/`F7` save/load state, `F2`/`F3` change
-slot, `F4`/`F10` cycle layout, `F6` swap screens, `F9` screenshot, `L` lid,
-`M` fake microphone, `F` fullscreen, `Escape` quit.
-
-`dsperate-headless` is the measurement harness: no window or audio, boots the
-firmware or a ROM with `--direct`, and offers instruction traces, frame and
-audio dumps, save-state checkpoints and cheats from the command line. It never
-writes a battery save back.
-
-## Diagnostics, tests and tools
-
-Environment variables (`DS_VERBOSE`, `DS_FRAME_STATS`, `DS_FPS`, `DS_PROFILE`,
-`DS_FRAME_HASH`, `DS_IO_CENSUS`, `DS_JIT_*` and others) are documented where
-they are read. `ctest` runs the unit tests in
-[tests/](tests/): interpreter, recompiler against interpreter, NEON kernels
-against portable references, page table, scheduler, I/O, SPU, 2D/3D pipelines
-and the texture cache. [tools/](tools/) holds the PGO refresh scripts, the shader and example-config
-generators, the release ABI-floor check, `mkdsin.py` for scripting an input
-replay, and `mkcart.py` for building a custom loader cart.
-
-## Licence
-
-GPLv3 — see [LICENSE](LICENSE). melonDS (GPLv3) is used as reference and, with
-attribution, as a code source. FreeBIOS is under its own licence in
-[src/core/bios/LICENSE.freebios](src/core/bios/LICENSE.freebios). The built-in analog
-controls codes are shocoman's and not under the GPL; their provenance is in
-[src/core/cheat/analog_db/README.md](src/core/cheat/analog_db/README.md).
+GPL-3.0, as upstream; see [LICENSE](LICENSE).
